@@ -20,6 +20,7 @@ var funcCommands = map[string]bool{
 	"deploy":   true,
 	"invoke":   true,
 	"list":     true,
+	"export":   true,
 	"logs":     true,
 	"metrics":  true,
 	"rollback": true,
