@@ -10,7 +10,18 @@ import (
 	"github.com/tj/cobra"
 
 	"github.com/apex/apex/cmd/apex/root"
+	"github.com/apex/apex/utils"
+	"github.com/apex/log"
 )
+
+// env file.
+var envFile string
+
+// env supplied.
+var env []string
+
+// output file name.
+var outputFile string
 
 // example output.
 const example = `
@@ -28,6 +39,12 @@ var Command = &cobra.Command{
 // Initialize.
 func init() {
 	root.Register(Command)
+
+	f := Command.Flags()
+	f.StringSliceVarP(&env, "set", "s", nil, "Set environment variable")
+	f.StringVarP(&envFile, "env-file", "E", "", "Set environment variables from JSON file")
+	f.StringVarP(&outputFile, "output-file", "O", ".protego/export.json", "The name of the output file")
+
 }
 
 // Run command.
@@ -59,8 +76,26 @@ type exportedFunction struct {
 
 // exportFunctions format.
 func exportFunctions() error {
-	functionsMap := make(map[string]exportedFunction)
 
+	// read the envFile if supplied and add it to the project env
+	if envFile != "" {
+		if err := root.Project.LoadEnvFromFile(envFile); err != nil {
+			return fmt.Errorf("reading env file %q: %s", envFile, err)
+		}
+	}
+
+	// read the env if supplied and add it to the project env
+	vars, err := utils.ParseEnv(env)
+	if err != nil {
+		return err
+	}
+
+	for k, v := range vars {
+		root.Project.Setenv(k, v)
+	}
+
+	// For every function create a exportedFunction object and add it to the functionsMap
+	functionsMap := make(map[string]exportedFunction)
 	for _, fn := range root.Project.Functions {
 		awsFn, _ := fn.GetConfigCurrent()
 
@@ -113,20 +148,24 @@ func exportFunctions() error {
 		functionsMap[fn.Name] = *f
 
 	}
+	// convert functionsMap to a json string
 	jsonFunctions, _ := json.MarshalIndent(functionsMap, "", "  ")
 
-	err := os.MkdirAll(".protego", 0700)
+	// Create the .protego dir
+	err = os.MkdirAll(".protego", 0700)
 	if err != nil {
 		fmt.Println("Failed to create .protego dir")
 		return err
 	}
 
-	err = ioutil.WriteFile(".protego/export.json", jsonFunctions, 0700)
+	// Write the json file
+	err = ioutil.WriteFile(outputFile, jsonFunctions, 0700)
 	if err != nil {
-		fmt.Println("Failed to create export.json file")
+		fmt.Println("Failed to create " + outputFile + " file")
 		return err
 	}
 
-	fmt.Println("export data to: .protego/export.json")
+	log.Debugf("%s", jsonFunctions)
+	log.Debugf("export data to: " + outputFile)
 	return nil
 }
